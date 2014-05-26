@@ -1,0 +1,56 @@
+function [newMotorData, t_cart] =  synchMotorVideo(motorData,startFrame, stopFrame, fps,spinStartFrame)
+%synchMotorVideo modifies motor pwm time data to match up with the frames
+%of interest in the video data
+%
+%INPUTS
+% motorData - struct with fields time, M1R, M1L, M2R, M2L - assume time is
+% in milliseconds
+% startFrame and stopFrame - frame numbers that begin and end the region of
+% interest
+% fps - framerate of the video in frames per second 
+% spinStartFrame - frame of the video when the magnets start spinning for
+% the first time to establish an absolute start time
+
+%OUTPUTS
+%newMotorData - struct with fields time, M1, M2 (M1L is + spin and M2R is +
+%spin) M1 and M2 are in units of fraction of duty cycle (1 is 100% on, 0 is
+% 0% on)
+%t_cart - time vector associated with the frames of the video 
+
+%% set the cart time data
+t_cart = ((startFrame-spinStartFrame):(stopFrame-spinStartFrame))/fps;
+t_start = min(t_cart);
+t_end = max(t_cart);
+dt = 1/fps;  %timestep in cart data
+%%
+motorData.time = 1E-3*(motorData.time-motorData.time(1)); %motor time in seconds
+
+%find the first nonzero motor component in the arduino data to synch with
+%the video zero time
+allMotorMax = max([motorData.M1L, motorData.M1R, motorData.M2L, motorData.M2R],[],2);
+allMotorMax = allMotorMax-allMotorMax(1);
+spinStartInd = find(allMotorMax,1);
+motorData.time = motorData.time - motorData.time(spinStartInd);
+
+stopInd = find(motorData.time > t_end,1); %index of
+startInd = find(motorData.time < t_start,1);
+
+ fields = fieldnames(motorData);
+
+
+for i = 1:numel(fields)
+    data = motorData.(fields{i});
+  motorData.(fields{i}) = data(startInd:stopInd);
+  
+end
+motorData.time = motorData.time- motorData.time(1);
+%set first motor data point to zero and convert time to seconds 
+
+
+%combine data into single motor commands for each motor
+M1 = (motorData.M1L-motorData.M1R)/255;
+M2 = (motorData.M1R-motorData.M1L)/255;
+
+newMotorData = struct('time',motorData.time,'M1',M1,'M2',M2);
+
+end
